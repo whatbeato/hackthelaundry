@@ -1,0 +1,26 @@
+{
+  "name": "washing-machine-slack-bot",
+  "version": "1.0.0",
+  "description": "Slack bot that monitors washing machine status and sends notifications when loads are done",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.17.1",
+    "axios": "^1.10.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "slack",
+    "bot",
+    "washing-machine",
+    "notifications"
+  ],
+  "author": "",
+  "license": "MIT"
+}

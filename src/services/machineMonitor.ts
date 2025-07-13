@@ -88,14 +88,14 @@ export class MachineMonitor {
       
       // Check if machine has finished and send notification
       if (isFinished) {
-        console.log(`🎉 Machine ${machine.machineName} has finished! Status: ${previousState?.status} → ${machine.status}`);
+        console.log(`🎉 Machine ${machine.machineNumber} has finished! Status: ${previousState?.status} → ${machine.status}`);
         await this.slackNotifier.sendFinishedNotification(machine);
       }
       
       // Log current status for debugging
       if (this.isDebugMode) {
         const timeRemaining = LaundryFetcher.formatTimeRemaining(machine.remainingSeconds);
-        console.log(`[DEBUG] ${machine.machineName}: ${machine.status} (${timeRemaining} remaining)`);
+        console.log(`[DEBUG] ${machine.machineNumber}: ${machine.status} (${timeRemaining} remaining)`);
       }
     }
 
@@ -115,6 +115,6 @@ export class MachineMonitor {
    */
   public async sendStatusUpdate(): Promise<void> {
     const machines = this.getCurrentStates();
-    await this.slackNotifier.sendStatusUpdate(machines);
+    await this.slackNotifier.sendStatusUpdateWithMachines(machines);
   }
 }

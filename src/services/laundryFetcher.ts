@@ -53,7 +53,7 @@ export class LaundryFetcher {
       const status: ParsedMachineStatus = JSON.parse(machine.currentStatus);
       
       // Enhanced logging to help identify status flags
-      console.log(`[DEBUG] Machine ${machine.machineName} (${machine.id}) raw status:`, {
+      console.log(`[DEBUG] Machine ${machine.machineNumber} (${machine.id}) raw status:`, {
         statusId: status.statusId,
         remainingSeconds: status.remainingSeconds,
         isDoorOpen: status.isDoorOpen,

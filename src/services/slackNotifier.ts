@@ -16,6 +16,8 @@ export class SlackNotifier {
     outOfOrder: string;
   };
 
+  private machineNumberMap: Map<string, string> = new Map(); // machineId -> machineNumber
+
   constructor(
     botToken: string, 
     signingSecret: string, 
@@ -66,13 +68,13 @@ export class SlackNotifier {
     
     const message = {
       channel: this.channelId,
-      text: `:white_check_mark: *${machine.machineName} (${machineType}) is done!*`,
+      text: `:white_check_mark: *${machine.machineNumber} (${machineType}) is done!*`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `:white_check_mark: *${machine.machineName} (${machineType}) is done!*`
+            text: `:white_check_mark: *${machine.machineNumber} (${machineType}) is done!*`
           }
         },
         {
@@ -80,7 +82,7 @@ export class SlackNotifier {
           fields: [
             {
               type: "mrkdwn",
-              text: `*Machine:*\n${machine.machineName}`
+              text: `*Machine:*\n${machine.machineNumber}`
             },
             {
               type: "mrkdwn",
@@ -138,6 +140,42 @@ export class SlackNotifier {
     } catch (error) {
       console.error('Error sending status update:', error);
     }
+  }
+
+  /**
+   * Update machine number mapping and send interactive status update
+   */
+  public async sendStatusUpdateWithMachines(machines: LaundryMachine[]): Promise<void> {
+    if (machines.length === 0) {
+      return;
+    }
+
+    // Update machine number mapping
+    machines.forEach(machine => {
+      this.machineNumberMap.set(machine.id, machine.machineNumber);
+    });
+
+    const blocks = this.buildInteractiveStatusBlocks(machines);
+    
+    const message = {
+      channel: this.channelId,
+      text: '🧺 Laundry Status Update',
+      blocks: blocks
+    };
+
+    try {
+      await this.app.client.chat.postMessage(message);
+      console.log('Interactive status update sent to Slack');
+    } catch (error) {
+      console.error('Error sending status update:', error);
+    }
+  }
+
+  /**
+   * Get machine number from ID
+   */
+  private getMachineNumber(machineId: string): string {
+    return this.machineNumberMap.get(machineId) || machineId;
   }
 
   /**
@@ -207,31 +245,36 @@ export class SlackNotifier {
    */
   private setupInteractions(): void {
     // Handle claim button clicks
-    this.app.action(/^claim_machine_(.+)$/, async ({ body, ack, client }) => {
+    this.app.action(/^claim_(.+)$/, async ({ body, ack, client }) => {
       await ack();
+      console.log('[DEBUG] Claim button clicked:', body);
       
       if ('actions' in body && body.actions && body.actions.length > 0) {
         const action = body.actions[0];
         if ('action_id' in action) {
-          const machineId = action.action_id.replace('claim_machine_', '');
+          const machineId = action.action_id.replace('claim_', '');
           const userId = body.user.id;
           const username = ('username' in body.user ? body.user.username : 
                            'name' in body.user ? body.user.name : 'Unknown') || 'Unknown';
           
+          console.log(`[DEBUG] Processing claim for machine ${machineId} by user ${userId}`);
+          
           const success = this.userTrackingService.claimMachine(machineId, userId, username);
           
           if (success) {
+            const machineNumber = this.getMachineNumber(machineId);
             await client.chat.postMessage({
               channel: this.channelId,
-              text: `Machine ${machineId} claimed by <@${userId}>`
+              text: `🔖 Machine ${machineNumber} claimed by <@${userId}>! You'll be notified when it's done.`
             });
             
             // Update the status message
             await this.updateInteractiveStatusMessage();
           } else {
+            const machineNumber = this.getMachineNumber(machineId);
             await client.chat.postMessage({
               channel: this.channelId,
-              text: `Machine ${machineId} is already claimed!`
+              text: `❌ Machine ${machineNumber} is already claimed!`
             });
           }
         }
@@ -239,28 +282,33 @@ export class SlackNotifier {
     });
 
     // Handle snoop button clicks
-    this.app.action(/^snoop_machine_(.+)$/, async ({ body, ack, client }) => {
+    this.app.action(/^snoop_(.+)$/, async ({ body, ack, client }) => {
       await ack();
+      console.log('[DEBUG] Snoop button clicked:', body);
       
       if ('actions' in body && body.actions && body.actions.length > 0) {
         const action = body.actions[0];
         if ('action_id' in action) {
-          const machineId = action.action_id.replace('snoop_machine_', '');
+          const machineId = action.action_id.replace('snoop_', '');
           const userId = body.user.id;
           const username = ('username' in body.user ? body.user.username : 
                            'name' in body.user ? body.user.name : 'Unknown') || 'Unknown';
           
+          console.log(`[DEBUG] Processing snoop for machine ${machineId} by user ${userId}`);
+          
           const success = this.userTrackingService.addSnoop(machineId, userId, username);
           
           if (success) {
+            const machineNumber = this.getMachineNumber(machineId);
             await client.chat.postMessage({
               channel: this.channelId,
-              text: `<@${userId}> will be notified when machine ${machineId} is done`
+              text: `👀 <@${userId}> is now snooping on machine ${machineNumber} and will be notified when it's done!`
             });
           } else {
+            const machineNumber = this.getMachineNumber(machineId);
             await client.chat.postMessage({
               channel: this.channelId,
-              text: `<@${userId}> is already snooping machine ${machineId}!`
+              text: `ℹ️ <@${userId}> is already snooping on machine ${machineNumber}!`
             });
           }
         }
@@ -312,7 +360,7 @@ export class SlackNotifier {
           accessory: {
             type: "image",
             image_url: gifUrl,
-            alt_text: `${dryer.machineName} ${statusText}`
+            alt_text: `${dryer.machineNumber} ${statusText}`
           }
         });
         
@@ -331,6 +379,7 @@ export class SlackNotifier {
               value: dryer.id,
               action_id: `claim_${dryer.id}`
             });
+            console.log(`[DEBUG] Added claim button for dryer ${dryer.id} with action_id: claim_${dryer.id}`);
           }
           
           actionElements.push({
@@ -343,6 +392,7 @@ export class SlackNotifier {
             value: dryer.id,
             action_id: `snoop_${dryer.id}`
           });
+          console.log(`[DEBUG] Added snoop button for dryer ${dryer.id} with action_id: snoop_${dryer.id}`);
           
           if (actionElements.length > 0) {
             blocks.push({
@@ -390,7 +440,7 @@ export class SlackNotifier {
           accessory: {
             type: "image",
             image_url: gifUrl,
-            alt_text: `${washer.machineName} ${statusText}`
+            alt_text: `${washer.machineNumber} ${statusText}`
           }
         });
         
@@ -409,6 +459,7 @@ export class SlackNotifier {
               value: washer.id,
               action_id: `claim_${washer.id}`
             });
+            console.log(`[DEBUG] Added claim button for washer ${washer.id} with action_id: claim_${washer.id}`);
           }
           
           actionElements.push({
@@ -421,6 +472,7 @@ export class SlackNotifier {
             value: washer.id,
             action_id: `snoop_${washer.id}`
           });
+          console.log(`[DEBUG] Added snoop button for washer ${washer.id} with action_id: snoop_${washer.id}`);
           
           if (actionElements.length > 0) {
             blocks.push({
